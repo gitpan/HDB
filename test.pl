@@ -3,7 +3,7 @@
 ###use Data::Dumper ; print Dumper(  ) ;
 
 use Test;
-BEGIN { plan tests => 19 } ;
+BEGIN { plan tests => 25 } ;
 
 use HDB ;
 

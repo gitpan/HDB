@@ -1,8 +1,8 @@
 #############################################################################
-## This file was generated automatically by Class::HPLOO/0.17
+## This file was generated automatically by Class::HPLOO/0.21
 ##
 ## Original file:    ./lib/HDB/Object.hploo
-## Generation date:  2004-11-14 22:11:28
+## Generation date:  2005-01-23 18:30:36
 ##
 ## ** Do not change this file, use the original HPLOO source! **
 #############################################################################
@@ -24,43 +24,81 @@
 
   use strict qw(vars) ; no warnings ;
 
-  use vars qw(%CLASS_HPLOO @ISA) ;
+  use vars qw(%CLASS_HPLOO @ISA $VERSION) ;
 
-  @ISA = qw(UNIVERSAL) ;
+  $VERSION = '0.02' ;
+
+  @ISA = qw(Class::HPLOO::Base UNIVERSAL) ;
 
   my $CLASS = 'HDB::Object' ; sub __CLASS__ { 'HDB::Object' } ;
- 
-  sub new { 
-    if ( !defined &Object && @ISA > 1 ) {
-    foreach my $ISA_i ( @ISA ) {
-    return &{"$ISA_i\::new"}(@_) if defined &{"$ISA_i\::new"} ;
-    } }  my $class = shift ;
-    my $this = bless({} , $class) ;
-    no warnings ;
-    my $undef = \'' ;
-    sub UNDEF {$undef} ;
-    my $ret_this = defined &Object ? $this->Object(@_) : undef ;
-    if ( ref($ret_this) && UNIVERSAL::isa($ret_this,$class) ) {
-    $this = $ret_this } elsif ( $ret_this == $undef ) {
-    $this = undef }  return $this ;
-    }  sub CLASS_HPLOO_TIE_KEYS ;
-    sub SUPER {
-    my ($pack , undef , undef , $sub0) = caller(1) ;
-    unshift(@_ , $pack) if ( (!ref($_[0]) && $_[0] ne $pack) || (ref($_[0]) && !UNIVERSAL::isa($_[0] , $pack)) ) ;
-    my $sub = $sub0 ;
-    $sub =~ s/.*?(\w+)$/$1/ ;
-    $sub = 'new' if $sub0 =~ /(?:^|::)$sub\::$sub$/ ;
-    $sub = "SUPER::$sub" ;
-    $_[0]->$sub(@_[1..$#_]) ;
-  }
+
+  use Class::HPLOO::Base ;
 
   use HDB ;
   
   *WITH_HPL = \&HDB::WITH_HPL ;
   *HPL_MAIN = \&HDB::HPL_MAIN ;
   
+  my ( %NEW_IDS , %OBJ_TABLE , %OBJ_TABLE_LOADER , $DID_REQUIRED ) ;
+  
+
+  use overload (
+  'bool' => '_OVER_bool' ,
+  '""' => '_OVER_string' ,
+  'fallback' => 1 ,
+  ) ;
+  
+  sub _OVER_bool { my $this = ref($_[0]) ? shift : undef ;my $CLASS = ref($this) || __PACKAGE__ ; 1 ;}
+  
+  sub _OVER_string { 
+    my $this = ref($_[0]) ? shift : undef ;
+    my $CLASS = ref($this) || __PACKAGE__ ;
+    
+    my $class = $this->__CLASS__ ;
+    my $id = $this->__ID__ ;
+    
+    if ( !$id ) {
+      $this->hdb_save ;
+      $id = $this->__ID__ ;
+    }
+    
+    my $ident = "hdbobj__$class\__$id" ;
+    $ident =~ s/::/_/gs ;
+
+    return $ident ;
+  }
+
+  sub do_require { 
+    my $this = ref($_[0]) ? shift : undef ;
+    my $CLASS = ref($this) || __PACKAGE__ ;
+    
+    return if $DID_REQUIRED ;
+    $DID_REQUIRED = 1 ;
+    
+    my $hpl = &HPL_MAIN() ;
+    
+    if ( $hpl ) {
+      $hpl->use_cached('Hash::NoRef') ;
+    }
+    else {
+      eval(" use Hash::NoRef ") ;
+    }
+    
+    tie( %OBJ_TABLE , 'Hash::NoRef' ) ;
+  }
+  
+  sub RESET { 
+    my $this = ref($_[0]) ? shift : undef ;
+    my $CLASS = ref($this) || __PACKAGE__ ;
+    
+    %OBJ_TABLE_LOADER = () ;
+    %OBJ_TABLE = () ;
+    %NEW_IDS = () ;
+    return 1 ;
+  }
+   
   sub load { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     $CLASS = $this ? ref $this : shift(@_) ;
@@ -79,9 +117,30 @@
     my @sel = $hdb_obj->select( $CLASS , (@where ? ['?',@where] : ()) , (!wantarray ? (limit => '1') : () ) , '@%' ) ;
     return if !@sel ;
     
+    do_require() ;
+    
     my @obj ;
     foreach my $sel_i ( @sel ) {
-      push(@obj , _build_obj($CLASS , $hdb_obj , $sel_i) ) if $sel_i ;
+      next if !$sel_i ;
+      
+      push(@obj , _build_obj($CLASS , $sel_i , $hdb_obj) ) ;
+      next ;
+      
+      if ( $OBJ_TABLE{"$CLASS/$$sel_i{id}"} ) {
+        delete $OBJ_TABLE_LOADER{"$CLASS/$$sel_i{id}"} ;
+        push(@obj , $OBJ_TABLE{"$CLASS/$$sel_i{id}"} ) ;
+      }
+      else {
+        my $loader ;
+        if ( $OBJ_TABLE_LOADER{"$CLASS/$$sel_i{id}"} ) {
+          $loader = $OBJ_TABLE_LOADER{"$CLASS/$$sel_i{id}"} ;
+        }
+        else {
+          $loader = HDB::Object::Loader::create_loader($CLASS , $sel_i , $hdb_obj) ;
+          $OBJ_TABLE_LOADER{"$CLASS/$$sel_i{id}"} = $loader ;
+        }
+        push(@obj , $loader) ;
+      }
     }
     
     return if !@obj ;
@@ -90,14 +149,58 @@
     return $obj[0] ;
   }
   
+  sub select { 
+    my $this = ref($_[0]) ? shift : undef ;
+    my $CLASS = ref($this) || __PACKAGE__ ;
+    
+    my ( @list , $attr , $id ) ;
+    if ( $#_ == 0 ) { ( $attr ) = @_ ;}
+    elsif ( $#_ == 1 ) { ( $attr , $id ) = @_ ;}
+    elsif ( $#_ > 1 ) { ( $id , @list ) = @_ ;}
+    
+    my $ret ;
+    
+    if ( @list ) {
+      foreach my $list_i ( @list ) {
+        if ( (UNIVERSAL::isa($list_i , 'HDB::Object') && $list_i->{__ID__} == $id) || (ref($list_i) eq 'HDB::Object::Loader' && $list_i->__ID__ == $id) ) {
+          $ret = $list_i ;
+          last ;
+        }
+      }
+    }
+    else {
+      if ( ref( $this->{$attr} ) eq 'ARRAY' ) {
+        foreach my $list_i ( @{ $this->{$attr} } ) {
+          if ( (UNIVERSAL::isa($list_i , 'HDB::Object') && $list_i->{__ID__} == $id) || (ref($list_i) eq 'HDB::Object::Loader' && $list_i->__ID__ == $id) ) {
+            $ret = $list_i ;
+            last ;
+          }
+        }
+      }
+      elsif ( (UNIVERSAL::isa($this->{$attr} , 'HDB::Object') && $this->{$attr}->{__ID__} == $id) || (ref($this->{$attr}) eq 'HDB::Object::Loader' && $this->{$attr}->__ID__ == $id) ) {
+        $ret = $this->{$attr} ;
+      }
+    }
+    
+    return $ret ;
+  }
+  
   sub _build_obj { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my $CLASS = shift(@_) ;
-    my $hdb_obj = shift(@_) ;
     my $sel = shift(@_) ;
+    my $hdb_obj = shift(@_) ;
+    
+    my $obj_ident = "$CLASS/$$sel{id}" ;
+    
+    ##print "BUILD OBJ>> $CLASS , $sel , $hdb_obj [$OBJ_TABLE{$obj_ident}]\n" ;
+    
+    return $OBJ_TABLE{$obj_ident} if $OBJ_TABLE{$obj_ident} ;
     
     my $this = bless({} , $CLASS) ;
+    
+    $hdb_obj ||= $CLASS->hdb ;
     
     &{"$CLASS\::CLASS_HPLOO_TIE_KEYS"}($this) ;
     
@@ -111,7 +214,8 @@
         eval('use Storable qw()') ;
         if ( !$@ ) {
           eval {
-            $this->{CLASS_HPLOO_ATTR}{$attr} = Storable::thaw($freeze) ;
+            my $thaw = Storable::thaw($freeze) ;
+            $this->{CLASS_HPLOO_ATTR}{$attr} = ref($thaw) eq 'ARRAY' ? $$thaw[0] : undef ;
           };
         }
       }
@@ -120,12 +224,13 @@
     
     $this->{__ID__} = $$sel{id} ;
     $this->{__HDB_OBJ__} = $hdb_obj ;
-
     
     my @ref_tables = $this->hdb_ref_tables ;
     
     foreach my $ref_tables_i ( @ref_tables ) {
       my ($class_main , $class_obj , $attr) = ( $ref_tables_i =~ /^hdbref__(\w*?)__(\w*?)__(\w+)/ );
+      $class_obj .= '_' if $class_main eq $class_obj ;
+      
       my @sel = $this->hdb->select( $ref_tables_i , "$class_main == $this->{__ID__}" , cols => "$class_obj" , '@$') ;
 
       $this->{CLASS_HPLOO_ATTR}{$attr} = [] ;
@@ -134,16 +239,37 @@
       }
     }
     
+    foreach my $Key ( keys %OBJ_TABLE ) {
+      delete $OBJ_TABLE{$Key} if !defined $OBJ_TABLE{$Key} ;
+    }
+    
+    delete $OBJ_TABLE_LOADER{$obj_ident} ;
+    $OBJ_TABLE{$obj_ident} = $this ;
 
     return $this ;
   }
   
+  sub hdb_refresh { 
+    my $this = ref($_[0]) ? shift : undef ;
+    my $CLASS = ref($this) || __PACKAGE__ ;
+    
+    return if !$this || !$this->{__ID__} ;
+    my $hdb_obj = $this->hdb ;
+    return if !$hdb_obj ;
+        
+    my $sel = $hdb_obj->select( $this->__CLASS__ , "id == $this->{__ID__}" , '$%' ) ;
+    
+    print "REF>> $sel\n" ;
+  }
+  
   sub _build_ref_obj { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my $class_obj = shift(@_) ;
     my $id = shift(@_) ;
     
+    $class_obj =~ s/_$// ;
+    $class_obj =~ s/_/::/gs ;
     if ( UNIVERSAL::isa($class_obj,'HDB::Object') ) {
       return $class_obj->load($id) ;
     }
@@ -151,14 +277,14 @@
   }
   
   sub __ID__ { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     return $this->{__ID__} ;
   }
   
   sub hdb_obj_changed { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     return 1 if ( exists $this->{CLASS_HPLOO_CHANGED} && $this->{CLASS_HPLOO_CHANGED} && ref $this->{CLASS_HPLOO_CHANGED} eq 'HASH' && %{ $this->{CLASS_HPLOO_CHANGED} }) ;
@@ -166,7 +292,7 @@
   }
   
   sub hdb { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     my $dbobj = UNIVERSAL::isa($this , 'HASH') ? $this->{__HDB_OBJ__} : undef ;
@@ -198,7 +324,7 @@
   }
   
   sub hdb_table_exists { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     $CLASS = $this ? ref $this : shift(@_) ;
@@ -208,7 +334,10 @@
 
     my %table_hash = $this ? $this->hdb->tables_hash : $CLASS->hdb->tables_hash ;
     
-    if ( $table_hash{ ($this ? $this->__CLASS__ : $CLASS ) } ) {
+    my $table = $this ? $this->__CLASS__ : $CLASS ;
+    $table = HDB::CMDS::_format_table_name($table) ;
+    
+    if ( $table_hash{$table} ) {
       $CLASS_HPLOO_HASH->{HDB_TABLE_CHK} = time ;
       return 1 ;
     }
@@ -218,11 +347,16 @@
   }
   
   sub hdb_create_table { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     my $class_hploo = $this->GET_CLASS_HPLOO_HASH ;
     my $CLASS = $this->__CLASS__ ;
+    
+    if ( $CLASS !~ /^\w+(?:::\w+)*$/ ) {
+      warn("Can't use class name '$CLASS' as a table name!!!\n") ;
+    }
+    
     $CLASS =~ s/:+/_/gs ;
       
     my @cols ;
@@ -239,13 +373,15 @@
         push(@cols , $col_name , $this->_hdb_col_type_hploo_2_hdb($tp) ) ;
       }
     }
+    
+    warn("Can't store in the DB class $CLASS since the class doesn't have attributes!") if !@cols ;
 
     $this->hdb->create( $CLASS , @cols ) ;
     #print $this->hdb->sql . "\n" ;
   }
   
   sub hdb_ref_tables { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     my $CLASS = $this ? $this->__CLASS__ : shift(@_) ;
@@ -261,7 +397,7 @@
   }
   
   sub hdb_ref_to_me_tables { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     my $CLASS = $this ? $this->__CLASS__ : shift(@_) ;
@@ -277,7 +413,7 @@
   }
   
   sub hdb_referenced_ids { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     my $CLASS = $this ? $this->__CLASS__ : shift(@_) ;
@@ -316,7 +452,7 @@
   }
   
   sub hdb_clean_unref { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     my $CLASS = $this ? $this->__CLASS__ : shift(@_) ;
@@ -333,7 +469,7 @@
   }
   
   sub _hdb_attr_type { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my  $attr = shift(@_) ;
     my $tp  = shift(@_) ;
@@ -368,6 +504,7 @@
     my ($table_ref , @cols_ref) ;
     if ( $tp1 eq 'array' ) {
       $table_ref = "hdbref__$CLASS\__$tp2\__$attr" ;
+      $tp2 .= '_' if $CLASS eq $tp2 ;
       @cols_ref = (
       $CLASS => 'integer' ,
       $tp2 => 'integer' ,
@@ -378,7 +515,7 @@
   }
   
   sub _hdb_col_type_hploo_2_hdb { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my  $hploo_type  = shift(@_) ;
     
@@ -390,7 +527,7 @@
   }
   
   sub hdb_max_id { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     my $max_id = $this->hdb->select( $this->__CLASS__ , cols => '>id' , '$' ) ;
@@ -398,7 +535,7 @@
   }
   
   sub hdb_delete { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     return if !$this->hdb_table_exists ;
@@ -412,16 +549,27 @@
     
     return 1 ;
   }
+  
+  sub hdb_new_id { 
+    my $this = ref($_[0]) ? shift : undef ;
+    my $CLASS = ref($this) || __PACKAGE__ ;
+    
+    my $id = $this->hdb_max_id + 1 ;
+    my $class = $this->__CLASS__ ;
+    while( $NEW_IDS{$class}{$id} ) { ++$id ;}
+    $NEW_IDS{$class}{$id} = 1 ;
+    return $id ;
+  }
 
   sub hdb_save { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my %args = @_ ;
     @_ = () ;
     
     $this->hdb_create_table if !$this->hdb_table_exists ;
 
-    return if !$this->hdb_obj_changed ;
+    return if !$args{save_all} && !$this->hdb_obj_changed ;
     
     my $class_hploo = $this->GET_CLASS_HPLOO_HASH ;
 
@@ -432,7 +580,7 @@
     my $insert ;
     
     if ( $id eq '' || ($id && !$this->hdb->select( $this->__CLASS__ , "id == $id" , cols => 'id' , '$' )) ) {
-      $id = $this->hdb_max_id + 1 ;
+      $id = $this->hdb_new_id ;
       $insert = 1 ;
     }
         
@@ -443,13 +591,20 @@
     foreach my $order_i ( @{$class_hploo->{ATTR_ORDER}} ) {
       my $tp = $class_hploo->{ATTR}{$order_i}{tp} ;
       my ( $col_name , $tp , $table_ref , @cols_ref ) = $this->_hdb_attr_type($order_i , $tp) ;
+      
+      ##print ">> $col_name , $tp , $table_ref , @cols_ref \n" ;
             
       if ( $table_ref ) {
         if ( ref $this->{$order_i} eq 'ARRAY' ) {
           my (@ids , %ids , $c) ; 
           
           foreach my $attr_i ( @{$this->{$order_i}} ) {
-            if ( UNIVERSAL::isa($attr_i , 'HDB::Object') ) {
+            if ( ref($attr_i) eq 'HDB::Object::Loader' ) {
+              my $id = $attr_i->[1]{id} ;
+              push(@ids , $id) ;
+              $ids{$id} = ++$c ;
+            }
+            elsif ( UNIVERSAL::isa($attr_i , 'HDB::Object') ) {
               $attr_i->hdb_save( no_auto_clean_unref => 1 , saved_classes => $saved_classes ) ;
               $$saved_classes{ $attr_i->__CLASS__ } = 1 ;
               push(@ids , $attr_i->{__ID__}) ;
@@ -498,8 +653,12 @@
         }
       }
       elsif ( $col_name =~ /^hdbobj/ ) {
-        if ( UNIVERSAL::isa($this->{$order_i} , 'HDB::Object') ) {
-          $this->{$order_i}->hdb_save( no_auto_clean_unref => 1 , saved_classes => $saved_classes ) ;
+        if ( ref($this->{$order_i}) eq 'HDB::Object::Loader' ) {
+          my $id = $this->{$order_i}->[1]{id} ;
+          $this->{CLASS_HPLOO_ATTR}{$col_name} = $id ;
+        }
+        elsif ( UNIVERSAL::isa($this->{$order_i} , 'HDB::Object') ) {
+          $this->{$order_i}->hdb_save( no_auto_clean_unref => 1 , saved_classes => $saved_classes , save_all => $args{save_all} ) ;
           $$saved_classes{ $this->{$order_i}->__CLASS__ } = 1 ;
           $this->{CLASS_HPLOO_ATTR}{$col_name} = $this->{$order_i}->{__ID__} ;
         }
@@ -509,7 +668,7 @@
         eval('use Storable qw()') ;
         if ( !$@ ) {
           eval {
-            $this->{CLASS_HPLOO_ATTR}{$col_name} = Storable::freeze( $this->{$order_i} ) ;
+            $this->{CLASS_HPLOO_ATTR}{$col_name} = Storable::freeze( [$this->{$order_i}] ) ;
           };
           push(@del_attr_keys , $col_name) ;
         }
@@ -524,9 +683,13 @@
     }
     else {
       my %changeds ;
-      foreach my $Key ( keys %$class_hploo_changed ) {
-        $changeds{$Key} = $this->{CLASS_HPLOO_ATTR}{$Key} ;
+      if ( $args{save_all} ) { %changeds = %{ $this->{CLASS_HPLOO_ATTR} } ;}
+      else {
+        foreach my $Key ( keys %$class_hploo_changed ) {
+          $changeds{$Key} = $this->{CLASS_HPLOO_ATTR}{$Key} ;
+        }
       }
+
       $ret = $this->hdb->update( $this->__CLASS__ , "id == $id" , \%changeds ) ;
     }
     
@@ -547,7 +710,7 @@
   }
   
   sub hdb_dump_table { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my $table = shift(@_) ;
     
@@ -556,29 +719,12 @@
       $table = $_[0] if $_[0] ;
     }
     
-    my $dump ;
-
-    $dump .= "TABLE $table:\n\n" ;
-        
-    my %cols = $this->hdb->table_columns($table) ;
-    my @cols = $this->hdb->names($table) ;
-    
-    foreach my $Key (@cols) {
-      $dump .= "  $Key = $cols{$Key}\n" ;
-    }
-    
-    $dump .= "\nROWS:\n\n" ;
-    
-    my @sel = $this->hdb->select( $table , '@$' ) ;
-    foreach my $sel_i ( @sel ) {
-      $dump .= "$sel_i\n" ;
-    }
-    
-    return $dump ;
+    return '' if !$this->hdb_table_exists ;
+    return $this->hdb->dump_table($table) ;
   }
   
   sub STORABLE_freeze { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my $cloning = shift(@_) ;
     
@@ -592,7 +738,7 @@
   }
   
   sub STORABLE_thaw { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     my $cloning = shift(@_) ;
     my $serial = shift(@_) ;
@@ -612,18 +758,189 @@
   }
 
   sub DESTROY { 
-    my $this = ref($_[0]) && UNIVERSAL::isa($_[0],__PACKAGE__) ? shift : undef ;
+    my $this = ref($_[0]) ? shift : undef ;
     my $CLASS = ref($this) || __PACKAGE__ ;
     
     return if !%$this ;
     $this->hdb_save ;
   }
+  
 
 
 }
 
 
-1;
+################################################################################
+
+{ package HDB::Object::Loader ;
+
+  use strict qw(vars) ;
+
+  use vars qw($AUTOLOAD) ;
+  
+  use overload (
+    'bool' => \&HDB::Object::_OVER_bool ,
+    '""' => \&HDB::Object::_OVER_string ,
+    '%{}' => '_OVER_hash' ,
+    'fallback' => 1 ,
+  );
+  
+  sub _OVER_hash {
+    _build($_[0]) ; return $_[0] ;
+  
+    if ( !$_[0][3] ) {
+      my %hash = (1) ;
+      $_[0][3] = \%hash ;
+      $_[0][4] = tie( %hash , 'HDB::Object::Loader::TieHandler' ,  @{$_[0]}[0..2] ) ;
+    }
+    
+    if ( $_[0][4] && $_[0][4]->[3] ) {
+      $_[0] = $_[0][4]->[3] ;
+      return $_[0] ;
+    }
+    
+    return $_[0][3] ;
+  }
+  
+  sub create_loader { bless [ @_ ] ;}
+  
+  sub _build {
+    my @args = @{$_[0]} ;
+    $_[0] = HDB::Object::_build_obj(@args) ;
+
+    die "INTERNAL ERROR: Cannot build instance of '$args[0]'\n" unless defined $_[0] ;
+    # This can occur if the class wasn't loaded correctly.
+    die "INTERNAL ERROR: _build() failed to build a new object\n" if ref($_[0]) eq __PACKAGE__;
+
+    return $_[0] ;
+  }
+  
+  sub __CLASS__ {
+    return $_[0][0] ;
+  }
+  
+  sub __ID__ {
+    return $_[0][1]{id} ;
+  }
+  
+  sub can {
+    _build($_[0]);
+    $_[0]->can($_[1]);
+  }
+
+  sub isa {
+    $_[0][0]->isa($_[1]) ;
+  }
+
+  sub AUTOLOAD {
+    my ($subname) = $AUTOLOAD =~ /([^:]+)$/ ;
+
+    my $realclass = $_[0][0] ;
+    _build( $_[0] ) ;
+
+    my $func = $_[0]->can( $subname );
+
+    die "Cannot call '$subname' on an instance of '$realclass'\n" unless ref( $func ) eq 'CODE';
+
+    goto &$func ;
+  }
+  
+  ## Don't need to save if we haven't changed attributes:  
+  sub DESTROY {
+    ##_build($_[0]);
+    ##$_[0]->DESTROY(@_[1..$#_]);
+  }
+  
+}
+
+################################################################################
+
+{ package HDB::Object::Loader::TieHandler ;
+
+  use strict qw(vars) ;
+  no warnings ;
+  
+  sub TIEHASH { shift ; bless [ @_ ] ;}
+  
+  my $val ;
+  
+  sub FETCH { #print STDOUT "FETCH>> @_\n" ;
+    my $this = shift ;
+    my $key = shift ;
+    
+    return $this->[1]{id} if $key eq '__ID__' ;
+    
+    $this->[3] = HDB::Object::_build_obj( @{$this}[0..2] ) if !defined $this->[3] ;
+    
+    return $this->[3]{$key} ;
+  }  
+  
+  sub STORE { #print STDOUT "STORE>> @_\n" ;
+    my $this = shift ;
+    my $key = shift ;
+  
+    $this->[3] = HDB::Object::_build_obj( @{$this}[0..2] ) if !defined $this->[3] ;
+    
+    return $this->[3]{$key} ;
+  }
+   
+  sub DELETE   { #print STDOUT "DELETE>> @_\n" ;
+    my $this = shift ;
+    my $key = shift ;
+    
+    $this->[3] = HDB::Object::_build_obj( @{$this}[0..2] ) if !defined $this->[3] ;
+    
+    return delete $this->[3]{$key} ;
+  }
+  
+  sub EXISTS   { #print STDOUT "EXISTS>> @_\n" ;
+    my $this = shift ;
+    my $key = shift ;
+    
+    $this->[3] = HDB::Object::_build_obj( @{$this}[0..2] ) if !defined $this->[3] ;
+    
+    return exists $this->[3]{$key} ;
+  }
+  
+  sub FIRSTKEY { #print STDOUT "FIRSTKEY>> @_\n" ;
+    my $this = shift ;
+    
+    $this->[3] = HDB::Object::_build_obj( @{$this}[0..2] ) if !defined $this->[3] ;
+    
+    return (keys %{$this->[3]})[0] ;
+  }
+  
+  sub NEXTKEY  { #print STDOUT "NEXTKEY>> @_\n" ;
+    my $this = shift ;
+    my $keylast = shift ;
+    
+    $this->[3] = HDB::Object::_build_obj( @{$this}[0..2] ) if !defined $this->[3] ;
+    
+    my $ret_next ;
+    foreach my $keys_i ( keys %{$this->[3]} ) {
+      if ($ret_next) { return $keys_i ;}
+      if ($keys_i eq $keylast || !defined $keylast) { $ret_next = 1 ;}
+    }
+  
+    return undef ;
+  }
+  
+  sub CLEAR { #print STDOUT "CLEAR>> @_\n" ;
+    my $this = shift ;
+    
+    $this->[3] = HDB::Object::_build_obj( @{$this}[0..2] ) if !defined $this->[3] ;
+    %{$this->[3]} = () ;
+    
+    return ;
+  }
+  
+  sub UNTIE {}
+  sub DESTROY {}
+
+}
+
+1 ;
+
 
 __END__
 
@@ -793,9 +1110,21 @@ When an attribute have a list of objects, a reference table is created automatic
 
   attr( array Date::OBject dates )
 
+=head1 OBJECT PROXY
+
+The Object Proxy mechanism was inspirated on L<Class::LazyLoad>. The main idea
+is that the object won't be created unless it's accessed. The proxy will be used only
+when the object is loaded from the DB, not when you create a new object. So, when
+you load an object from the DB, actually the DB will be accessed only when you use the
+object.
+
+An Object Proxy is very important to save memory and DB access, since if we don't
+use a proxy is possible to have an object that loads all the DB in the memory due
+it's object tree.
+
 =head1 SEE ALSO
 
-L<HPL>, L<HDB>, L<Class::HPLOO>.
+L<HPL>, L<HDB>, L<Class::HPLOO>, L<Class::LazyLoad>.
 
 =head1 AUTHOR
 

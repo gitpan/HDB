@@ -171,6 +171,8 @@ sub names {
   my $this = shift ;
   my ( $table ) = @_ ;
   
+  $table = HDB::CMDS::_format_table_name($table) ;
+  
   if (! $table) { return $this->Error('Invalid table!') ;}
   elsif ( $this->{CACHE}{names}{$table} ) { return @{ $this->{CACHE}{names}{$table} } ;}
   

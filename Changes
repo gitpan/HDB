@@ -1,5 +1,12 @@
 Revision history for Perl extension HDB.
 
+1.05 2004-12-20
+     - Added Object Proxy mechanism to HDB::OBject.
+     - Added cache of objects, so only one instance for each object
+       in the DB will be created in the memory.
+     - Fixed CACHE of HDB::Parser, that was growing to much and wasn't being cleaned.
+
+
 1.04 2004-11-4
      - Fixed and teste oracle support.
 

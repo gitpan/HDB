@@ -105,6 +105,8 @@ sub Parse_Where {
 
   $parse =~ s/%q_(\d+)%/$quotes[$1]/gs ;
 
+  CLEAN_CACHE() ;
+
   $CACHE{$where_id} = $parse ;
 
   $parse = "WHERE( $parse )" if !$nowhere ;
@@ -437,6 +439,24 @@ sub unfilter_null_bytes {
   
   $_[0] =~ s/^\Q$place_holder\E://s ;
   $_[0] =~ s/\Q$place_holder\E/\0/gs ;
+}
+
+###############
+# CLEAN_CACHE #
+###############
+
+sub CLEAN_CACHE {
+  my @keys = keys %CACHE ;
+  
+  if ( @keys > 1000 ) {
+    while( @keys > 500 ) {
+      for(1..100) {
+        delete $CACHE{ $keys[ rand(@keys) ] } ;
+      }
+      @keys = keys %CACHE ;
+    }
+  }
+  
 }
 
 #########

@@ -19,7 +19,7 @@ use vars qw(@ISA $AUTOLOAD) ;
 no warnings ;
 
 our ($VERSION) ;
-$VERSION = '1.04' ;
+$VERSION = '1.05' ;
 
 my $REQUIRED ;
 
@@ -33,6 +33,7 @@ sub REQUIRE {
   require HDB::CMDS ;
   require HDB::Encode ;
   require HDB::MOD ;
+  require HDB::Object ;
   $REQUIRED = 1 ;
 }
 
@@ -92,6 +93,7 @@ sub import {
 ############
 
 sub AUTOLOAD {
+
   if ( $#_ == 0 && ref($_[0]) && UNIVERSAL::isa($_[0],'HDB') ) {
     if ( ref($_[0]) eq 'HDB' ) {
       my $this = shift ;
@@ -113,11 +115,12 @@ sub AUTOLOAD {
     return undef ;
   }
   
-  my ($id0) = ( $AUTOLOAD =~ /(\w+)$/ );
+  my ($id0) = ( $AUTOLOAD =~ /(\w+)$/ ) ;
   my $id = lc($id0) ;
   
   if ( $WITH_HPL && $id ne '' ) {
     my $hpl = &HPL_MAIN() ;
+    
     if ( $hpl ) {
       my $hpl_root = $hpl->pack_root ;
       
@@ -314,6 +317,8 @@ sub DESTROY {
 
 sub RESET {
   ++$RESET_X ;
+  
+  HDB::Object::RESET() if defined &HDB::Object::RESET && (!$WITH_HPL || $RESET_X > 10) ;
 
   if ( $WITH_HPL ) {
     my $hpl = &HPL_MAIN() ;

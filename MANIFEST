@@ -14,3 +14,4 @@ lib/HDB/MOD/oracle.pm
 lib/HDB/MOD/sqlite.pm
 lib/HDB/Parser.pm
 test.pl
+META.yml                                 Module meta-data (added by MakeMaker)

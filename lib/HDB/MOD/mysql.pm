@@ -84,6 +84,8 @@ sub table_columns {
   my $this = shift ;
   my ( $table ) = @_ ;
   
+  $table = HDB::CMDS::_format_table_name($table) ;
+  
   if (! $table) { $this->Error('Invalid table!') ; return ;}
   
   my @cols = $this->cmd( "show columns from $table" , '@' ) ;

@@ -153,6 +153,8 @@ sub select {
   $args{table} = $_[0] if !defined $args{table} ;
   $args{where} = $where if !defined $args{where} ;
   
+  $args{table} = _format_table_name($args{table}) ;
+  
   if (! defined $args{return}) {
     if ( $_[-1] =~ /^(?:(?:n|names?|c|cols?|columns?)\s*[,;]*\s*)?(?:\$?[\$\@\%]{1,2}|<[\$\@\%]>)$/i ) { $args{return} = $_[-1] ;}
   }
@@ -234,6 +236,8 @@ sub insert {
   
   my ($table , @up) = @_ ;
   
+  $table = _format_table_name($table) ;
+  
   if ($#_ == 1) { @up = HDB::CORE::parse_ref($_[1]) ;}
   
   return $this->Error('Invalid table!') if !$table ;
@@ -247,8 +251,6 @@ sub insert {
     @up = () ;
     
     foreach my $names_i ( @names ) {
-      my $ins = undef ;
-      
       if    (defined $up{$names_i})     { push(@up , $up{$names_i}) ; push(@cols , $names_i) ;}
       elsif (defined $up{uc($names_i)}) { push(@up , $up{uc($names_i)}) ; push(@cols , $names_i) ;}
       elsif (defined $up{lc($names_i)}) { push(@up , $up{lc($names_i)}) ; push(@cols , $names_i) ;}
@@ -297,6 +299,8 @@ sub update {
   my $this = shift ;
   my ($table , $where , %up) = @_ ;
   
+  $table = _format_table_name($table) ;
+  
   if ($#_ == 2) { %up = HDB::CORE::parse_ref($_[2]) ;}
   
   if (! $table) { $this->Error('Invalid table!') ;}
@@ -306,16 +310,24 @@ sub update {
   
   my ($set_cols,@up) ;
   
-  foreach my $Key ( keys %up ) {
-    if ($set_cols ne '') { $set_cols .= " , " ;}
-    $set_cols .= "$Key = ?" ;
+  my @names = $this->names($table) ;
     
-    &HDB::Parser::filter_null_bytes($up{$Key}) ;
-    
-    if (ref($up{$Key}) eq 'HASH') { push(@up , &HDB::Encode::Pack_HASH($up{$Key}) ) ;}
-    elsif (ref($up{$Key}) eq 'ARRAY') { push(@up , &HDB::Encode::Pack_ARRAY($up{$Key}) ) ;}
-    else { push(@up , $up{$Key}) ;}
+  foreach my $names_i ( @names ) {
+    if    (defined $up{$names_i})     { push(@up , $up{$names_i}) ; $set_cols .= "$names_i = ? , " ;}
+    elsif (defined $up{uc($names_i)}) { push(@up , $up{uc($names_i)}) ; $set_cols .= "\U$names_i\E = ? , " ;}
+    elsif (defined $up{lc($names_i)}) { push(@up , $up{lc($names_i)}) ; $set_cols .= "\L$names_i\E = ? , " ;}
+    elsif (defined $up{"\u\L$names_i\E"}) { push(@up , $up{"\u\L$names_i\E"}) ; $set_cols .= "\u\L$names_i\E = ? , " ;}
   }
+
+  return if !@up ;
+  
+  foreach my $up_i ( @up ) {
+    if (ref($up_i) eq 'HASH') { $up_i = &HDB::Encode::Pack_HASH($up_i) ;}
+    elsif (ref($up_i) eq 'ARRAY') { $up_i = &HDB::Encode::Pack_ARRAY($up_i) ;}
+    &HDB::Parser::filter_null_bytes($up_i) ;
+  }
+  
+  $set_cols =~ s/ , $// ;
   
   $this->{sql} = "UPDATE $table SET $set_cols $where" ;
 
@@ -342,6 +354,8 @@ sub delete {
   my $this = shift ;
   my ($table , $where) = @_ ;
   
+  $table = _format_table_name($table) ;
+  
   if (! $table) { $this->Error('Invalid table!') ;}
   
   $where = &HDB::Parser::Parse_Where($where,$this) ;
@@ -365,6 +379,8 @@ sub delete {
 sub create {
   my $this = shift ;
   my ($table , @cols) = @_ ;
+  
+  $table = _format_table_name($table) ;
   
   if ($#_ == 1) { @cols = HDB::CORE::parse_ref($_[1]) ;}
   
@@ -456,6 +472,8 @@ sub cmd {
 sub names {
   my $this = shift ;
   my ( $table ) = @_ ;
+  
+  $table = _format_table_name($table) ;
   
   if (! $table) { return $this->Error('Invalid table!') ;}
   elsif ( $this->{CACHE}{names}{$table} ) { return @{ $this->{CACHE}{names}{$table} } ;}
@@ -549,6 +567,8 @@ sub drop {
   my $this = shift ;
   my ( $table ) = @_ ;
   
+  $table = _format_table_name($table) ;
+  
   if (! $table) { $this->Error('Invalid table!') ; return ;}
   
   my %tables = map { ("\L$_\E") => 1 } ($this->tables) ;
@@ -563,6 +583,39 @@ sub drop {
   $this->ON_DROP($table) if $this->can('ON_DROP') ;
   
   return 1 ;
+}
+
+##############
+# DUMP_TABLE #
+##############
+
+sub dump_table {
+  my $this = shift ;
+  my ( $table ) = @_ ;
+  
+  $table = _format_table_name($table) ;
+  
+  if (!$table) { $this->Error('Invalid table!') ; return ;}
+  
+  my $dump ;
+
+  $dump .= "TABLE $table:\n\n" ;
+      
+  my %cols = $this->table_columns($table) ;
+  my @cols = $this->names($table) ;
+  
+  foreach my $Key (@cols) {
+    $dump .= "  $Key = $cols{$Key}\n" ;
+  }
+  
+  $dump .= "\nROWS:\n\n" ;
+  
+  my @sel = $this->select( $table , '@$' ) ;
+  foreach my $sel_i ( @sel ) {
+    $dump .= "$sel_i\n" ;
+  }
+  
+  return $dump ;
 }
 
 ###############
@@ -584,6 +637,9 @@ sub flush_cache {
 sub flush_table_cache {
   my $this = shift ;
   my ( $table ) = @_ ;
+  
+  $table = _format_table_name($table) ;
+  
   if ( !$this->{CACHE} ) { return ;}
 
   my @sth = $this->_get_cache_table_sth($table) ;
@@ -595,6 +651,28 @@ sub flush_table_cache {
   foreach my $sth_i ( @sth ) { $sth_i->finish if $sth_i ;}
   
   return 1 ;
+}
+
+######################
+# _FORMAT_TABLE_NAME #
+######################
+
+sub _format_table_name {
+  my ( $table ) = @_ ;
+  $table =~ s/(?:\.|::)/_/gs ;
+  $table =~ s/[^\w\.]//gs ;
+  return $table ;
+}
+
+#######################
+# _FORMAT_COLUMN_NAME #
+#######################
+
+sub _format_column_name {
+  my ( $col ) = @_ ;
+  $col =~ s/(?:\.|::)/_/gs ;
+  $col =~ s/[^\w\.]//gs ;
+  return $col ;
 }
 
 ##################
@@ -1127,6 +1205,11 @@ Drop (remove) a table:
 Send a SQL query to the database. The return will be in the format of the argument RETURN:
 
   my @sel = $HDB->cmd('select * from users','@%');
+
+
+=head1 dump_table
+
+Return a string with the table dumped.
 
 =head1 tables
 
