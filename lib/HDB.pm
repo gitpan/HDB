@@ -19,7 +19,7 @@ use vars qw(@ISA $AUTOLOAD) ;
 no warnings ;
 
 our ($VERSION) ;
-$VERSION = '1.0' ;
+$VERSION = '1.01' ;
 
 my $REQUIRED ;
 
@@ -115,12 +115,21 @@ sub AUTOLOAD {
   }
   
   my ($id0) = ( $AUTOLOAD =~ /(\w+)$/ );
-  my $id = "\L$id0\E" ;
+  my $id = lc($id0) ;
   
   if ( $WITH_HPL && $id ne '' ) {
     my $hpl = &HPL_MAIN() ;
     if ( $hpl ) {
       my $hpl_root = $hpl->pack_root ;
+      
+      if ( $id eq 'hploo' && !${"$hpl_root\::MYHDB::DB"}{$id} ) {
+        $id = (sort keys %{"$hpl_root\::MYHDB::DB"})[0] ;
+        if ( $id ) {
+          $hpl->warn(qq`HDB id HPLOO not defined, using 1st defined DB for HDB::Object persistence.` , 1) ;
+          ${"$hpl_root\::MYHDB::DB"}{hploo} = ${"$hpl_root\::MYHDB::DB"}{$id} ;
+        }
+      }
+      
       my $obj = ${"$hpl_root\::MYHDB::DB"}{$id} ;
       if (!$obj) { $hpl->warn(qq`Can't find HDB id "$id" for dynamic access $_[0]\->$id0 !`) ;}
       return $obj ;
@@ -137,6 +146,8 @@ sub AUTOLOAD {
 ###########
 # ALIASES #
 ###########
+
+sub WITH_HPL { $WITH_HPL ;}
 
 sub open {
   if ( ref $_[0] && UNIVERSAL::isa($_[0],'HDB') ) {
@@ -197,7 +208,7 @@ sub new {
 
   eval { $this->connect };
   
-  if ( !$this || !$this->connected ) { $this->Error("Can't connect to DB. Load error!") ;}
+  if ( !$this || !$this->connected || !$this->dbh ) { $this->Error("Can't connect to DB. Load error!") ; return ;}
   
   if ($this->{dynamic} && $this->{id} ne '') {
     if ( $WITH_HPL ) {
@@ -601,11 +612,20 @@ Since the table is always the first argument, HDB will paste the fake method (ta
 
 B<** Dynamic access is used for global connections in HPL (connections set in the config file: .conf.hpl).>
 
+=head1 HDB::Object - Persistent Objects
+
+An automatic persistence framework was built over HDB, where is possible to
+create persistent classes in a easy and fast way. HDB was designed to handle any
+type of DB behind it, what extends the persistence framework to any DB that DBI
+can handle with standart SQL.
+
+Take a look at L<HDB::Object>.
+
 =head1 SEE ALSO
 
 L<HDB::CMDS>, L<HDB::Encode>, L<HDB::sqlite>, L<HDB::mysql>.
 
-L<HPL>.
+L<HDB::Object>, L<HPL>.
 
 =head1 AUTHOR
 

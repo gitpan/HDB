@@ -199,7 +199,6 @@ sub select {
     my $limit ;
     if ($args{limit} ne '') {
       my ($sz,$init) = ( $args{limit} =~ /(\d+)(?:\D+(\d+)|)/ );
-      $sz .= ",$init" if $init > 0 ;
       $limit = $this->LIMIT($sz,$init) ;
     }
     

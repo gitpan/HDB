@@ -6,6 +6,8 @@ lib/HDB.pm
 lib/HDB/CMDS.pm
 lib/HDB/CORE.pm
 lib/HDB/Encode.pm
+lib/HDB/Object.hploo
+lib/HDB/Object.pm
 lib/HDB/MOD.pm
 lib/HDB/MOD/mysql.pm
 lib/HDB/MOD/oracle.pm

@@ -24,26 +24,37 @@ my @STR_LYB = qw(a b c d e f g h i j k l m n o p q r s t u v w x y z A B C D E F
 # PARSE_WHERE #
 ###############
 
+#use HDB::CORE ;
+#print Parse_Where('id == 2' , {}) ;
+
 sub Parse_Where {
   my ( $where , $this , $nowhere ) = @_ ;
   
-  if ($where eq '') { return( undef ) ;}
+  if ($where eq '') { return ;}
   
   my @where = &HDB::CORE::parse_ref($where) ;
   
-  if (ref($where) && $#where <= 1 && $where[1] eq '') { return( "WHERE( $where[0] )" ) ;}
+  if (ref($where) && $#where <= 1 && $where[1] eq '') { return( $nowhere ? $where[0] : "WHERE( $where[0] )" ) ;}
   elsif (ref($where) eq 'ARRAY' && $#where >= 1) {
     my $cond = shift @where ;
-    $cond = '('. &Parse_Where($cond,$this,1) . ')' ;
-    
     my $parser ;
-    
-    foreach my $where_i ( @where ) {
-      my $val = &Value_Quote($where_i) ;
-      $parser .= ' OR ' if $parser ne '' ;
-      my $cond_new = $cond ;
-      $cond_new =~ s/["']\?["']/$val/gs ;
-      $parser .= $cond_new ;
+          
+    if ( $cond =~ /^\s*\(?\s*\?\s*\)?\s*$/s ) {
+      foreach my $where_i ( @where ) {
+        $where_i = Parse_Where($where_i,$this,1) ;
+      }
+      $parser = '(' . join(") OR (", @where) . ')' ;
+    }
+    else {
+      $cond = '('. &Parse_Where($cond,$this,1) . ')' ;
+      
+      foreach my $where_i ( @where ) {
+        my $val = &Value_Quote($where_i) ;
+        $parser .= ' OR ' if $parser ne '' ;
+        my $cond_new = $cond ;
+        $cond_new =~ s/["']\?["']/$val/gs ;
+        $parser .= $cond_new ;
+      }
     }
 
     if ($nowhere) { return($parser) ;}
@@ -53,7 +64,7 @@ sub Parse_Where {
   my $sql_id = $this ? "$this->{SQL}{REGEXP},$this->{SQL}{LIKE}" : '' ;
   my $where_id = "$sql_id#$where" ;
   
-  if ( defined $CACHE{$where_id} ) { return( $CACHE{$where_id} ) ;}
+  if ( defined $CACHE{$where_id} ) { return( $nowhere ? $CACHE{$where_id} : "WHERE( $CACHE{$where_id} )" ) ;}
   
   my ($syntax,@quotes) = &Parse_Quotes($where) ;
   
@@ -86,10 +97,9 @@ sub Parse_Where {
 
   $parse =~ s/%q_(\d+)%/$quotes[$1]/gs ;
 
-  $parse = "WHERE( $parse )" if !$nowhere ;
-  
   $CACHE{$where_id} = $parse ;
-  
+
+  $parse = "WHERE( $parse )" if !$nowhere ;
   return( $parse ) ;
 }
 

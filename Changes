@@ -1,5 +1,10 @@
 Revision history for Perl extension HDB.
 
-0.01  2004-01-10 16:45:42
+1.01 2004-09-14
+     - Added support for use of DBD::mysqlPP.
+     - Added class HDB::Object - Base class for persisten Class::HPLOO objects.
+
+
+1.0  2004-01-10 16:45:42
       - original version;
 

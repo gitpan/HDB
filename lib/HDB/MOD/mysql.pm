@@ -11,7 +11,21 @@
 #############################################################################
 
 package HDB::MOD::mysql ;
-use DBD::mysql ;
+
+my $DRIVER = 'mysql' ;
+
+BEGIN {
+  eval { require DBD::mysql } ;
+  
+  if ( $@ ) {
+    ## Try a pure Perl version of MySQL client.
+    eval { require DBD::mysqlPP } ;
+    if ( !$@ ) { $DRIVER = 'mysqlPP' ;}
+    else {
+      die("Can't load DBD::mysql or DBD::mysqlPP") ;
+    }
+  }
+}
 
 use strict qw(vars) ;
 no warnings ;
@@ -54,7 +68,7 @@ sub MOD_connect {
   my $db = $this->{db} ;
   my $host = $this->{host} ;
   
-  $this->{dbh} = DBI->connect("DBI:mysql:database=$db;host=$host", $this->{user} , $pass , { RaiseError => 0 , PrintError => 1 , AutoCommit => 1 }) ;
+  $this->{dbh} = DBI->connect("DBI:$DRIVER:database=$db;host=$host", $this->{user} , $pass , { RaiseError => 0 , PrintError => 1 , AutoCommit => 1 }) ;
   
   if (! $this->{dbh} ) { return $this->Error("Can't connect to db $db\@$host!") ;}
   
