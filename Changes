@@ -1,5 +1,12 @@
 Revision history for Perl extension HDB.
 
+1.02 2004-10-30
+     - Added filter/unfilter of null bytes when inserting data.
+     - Added support for object references at HDB::Object.
+     - Added support for automatic serialization (Storable) of non HDB::Object attributes.
+     - Added support to serialize or ref of HDB::Object for list attributes (collection).
+
+
 1.01 2004-09-14
      - Added support for use of DBD::mysqlPP.
      - Added class HDB::Object - Base class for persisten Class::HPLOO objects.

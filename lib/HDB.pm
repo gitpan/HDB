@@ -19,7 +19,7 @@ use vars qw(@ISA $AUTOLOAD) ;
 no warnings ;
 
 our ($VERSION) ;
-$VERSION = '1.01' ;
+$VERSION = '1.02' ;
 
 my $REQUIRED ;
 
@@ -92,7 +92,6 @@ sub import {
 ############
 
 sub AUTOLOAD {
-
   if ( $#_ == 0 && ref($_[0]) && UNIVERSAL::isa($_[0],'HDB') ) {
     if ( ref($_[0]) eq 'HDB' ) {
       my $this = shift ;

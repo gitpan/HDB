@@ -25,7 +25,7 @@ my @STR_LYB = qw(a b c d e f g h i j k l m n o p q r s t u v w x y z A B C D E F
 ###############
 
 #use HDB::CORE ;
-#print Parse_Where('id == 2' , {}) ;
+#print Parse_Where(['id == ?' , \'or' , qw(1 2 3)] , {} , 1) ;
 
 sub Parse_Where {
   my ( $where , $this , $nowhere ) = @_ ;
@@ -37,20 +37,28 @@ sub Parse_Where {
   if (ref($where) && $#where <= 1 && $where[1] eq '') { return( $nowhere ? $where[0] : "WHERE( $where[0] )" ) ;}
   elsif (ref($where) eq 'ARRAY' && $#where >= 1) {
     my $cond = shift @where ;
+    
+    my $op = ref $where[0] eq 'ARRAY' ? @{ shift(@where) }[0] : (ref $where[0] eq 'SCALAR' ? ${ shift(@where) } : 'OR' ) ;
+
+    $op =~ s/\s+//gs ;
+    $op =~ s/^(?:&&?|and)$/AND/i ;
+    $op =~ s/^(?:\|\|?|or)$/OR/i ;
+    $op = 'OR' if $op !~ /^(?:AND|OR)$/ ;
+    
     my $parser ;
           
     if ( $cond =~ /^\s*\(?\s*\?\s*\)?\s*$/s ) {
       foreach my $where_i ( @where ) {
         $where_i = Parse_Where($where_i,$this,1) ;
       }
-      $parser = '(' . join(") OR (", @where) . ')' ;
+      $parser = '(' . join(") $op (", @where) . ')' ;
     }
     else {
       $cond = '('. &Parse_Where($cond,$this,1) . ')' ;
       
       foreach my $where_i ( @where ) {
         my $val = &Value_Quote($where_i) ;
-        $parser .= ' OR ' if $parser ne '' ;
+        $parser .= " $op " if $parser ne '' ;
         my $cond_new = $cond ;
         $cond_new =~ s/["']\?["']/$val/gs ;
         $parser .= $cond_new ;
@@ -400,6 +408,37 @@ sub Rand_Str {
   return( @STR_LYB[rand(@STR_LYB)] ) ;
 }
 
+#####################
+# FILTER_NULL_BYTES #
+#####################
+
+sub filter_null_bytes {
+  return if $_[0] !~ /\0/s ;
+  
+  my $place_holder = "\1\2\1" ;
+  my $x = 1 ;
+  while( $_[0] =~ /\Q$place_holder\E/s ) {
+    $place_holder = "\1" . ("\2" x ++$x) . "\1" ;
+  }
+  
+  $_[0] =~ s/\0/$place_holder/gs ;
+  $_[0] =~ s/^/$place_holder:/s ;
+}
+
+#######################
+# UNFILTER_NULL_BYTES #
+#######################
+
+sub unfilter_null_bytes {
+  my $b1 = "\1" ;
+  my $b2 = "\2" ;
+  return if $_[0] !~ /^($b1$b2+$b1):/s ;
+  my $place_holder = $1 ;
+  
+  $_[0] =~ s/^\Q$place_holder\E://s ;
+  $_[0] =~ s/\Q$place_holder\E/\0/gs ;
+}
+
 #########
 # RESET #
 #########
@@ -413,4 +452,5 @@ sub RESET {
 #######
 
 1;
+
 

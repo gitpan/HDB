@@ -258,6 +258,7 @@ sub insert {
   foreach my $up_i ( @up ) {
     if (ref($up_i) eq 'HASH') { $up_i = &HDB::Encode::Pack_HASH($up_i) ;}
     elsif (ref($up_i) eq 'ARRAY') { $up_i = &HDB::Encode::Pack_ARRAY($up_i) ;}
+    &HDB::Parser::filter_null_bytes($up_i) ;
   }
   
   $this->_undef_sth ;
@@ -303,6 +304,8 @@ sub update {
   foreach my $Key ( keys %up ) {
     if ($set_cols ne '') { $set_cols .= " , " ;}
     $set_cols .= "$Key = ?" ;
+    
+    &HDB::Parser::filter_null_bytes($up{$Key}) ;
     
     if (ref($up{$Key}) eq 'HASH') { push(@up , &HDB::Encode::Pack_HASH($up{$Key}) ) ;}
     elsif (ref($up{$Key}) eq 'ARRAY') { push(@up , &HDB::Encode::Pack_ARRAY($up{$Key}) ) ;}
@@ -383,7 +386,6 @@ sub create {
     
     $name =~ s/^\s+//gs ;
     $name =~ s/\s+$//gs ;
-    $name = "\L$name\E" ;
     
     $type = $this->get_type( $type , $name ) ;
 
@@ -504,8 +506,17 @@ sub tables {
 ###############
 
 sub tables_hash {
-  my %tables = map { $_ => 1 } $_[0]->tables ;
-  return %tables ;
+  return map { $_ => 1 } $_[0]->tables ;
+}
+
+################
+# TABLE_EXISTS #
+################
+
+sub table_exists {
+  my %tables = $_[0]->tables ;
+  return 1 if $tables{$_[1]} ;
+  return ;
 }
 
 #################
@@ -669,6 +680,8 @@ sub Return {
   my @rows ;
   while (my $ref = $sth->fetchrow_arrayref) {
     foreach my $ref_i ( @$ref ) {
+      &HDB::Parser::unfilter_null_bytes($ref_i) ;
+      
       if    ( &HDB::Encode::Is_Packed_HASH($ref_i) ) { $ref_i = &HDB::Encode::UnPack_HASH($ref_i) ;}
       elsif ( &HDB::Encode::Is_Packed_ARRAY($ref_i) ) { $ref_i = &HDB::Encode::UnPack_ARRAY($ref_i) ;}
     }
@@ -721,13 +734,15 @@ sub get_type {
   $type =~ s/\s+$//gs ;
 
   ## *
-
+  
   if ($type =~ /^(?:\*|)$/s) { $type = 'TEXT' ;}
+
 
   ## TEXT
 
   if ($type =~ /^(?:TEXT\s*)?(\d+|\(\s*\d+\s*\))$/s || $type eq 'TEXT') {
-    my $sz = $1 ; $sz =~ s/\D//gs ;
+    my $sz = $2 ; $sz =~ s/\D//gs ;
+    $sz = 65535 if $sz eq '' ;
     
     if ( !$this->Accept_Type('TEXT') ) { $type = $this->Type_TEXT($sz) ;}
     else {
@@ -856,6 +871,8 @@ sub READLINE  {
   elsif ($this->{type} eq "\@") {
     my $ref = $sth->fetchrow_arrayref ; return if !$ref ;
     foreach my $ref_i ( @$ref ) {
+      &HDB::Parser::unfilter_null_bytes($ref_i) ;
+      
       if    ( &HDB::Encode::Is_Packed_HASH($ref_i) ) { $ref_i = &HDB::Encode::UnPack_HASH($ref_i) ;}
       elsif ( &HDB::Encode::Is_Packed_ARRAY($ref_i) ) { $ref_i = &HDB::Encode::UnPack_ARRAY($ref_i) ;}
     }
@@ -864,6 +881,8 @@ sub READLINE  {
   elsif ($this->{type} eq "\%") {
     my $ref = $sth->fetchrow_hashref ; return if !$ref ;
     foreach my $Key ( keys %$ref ) {
+      &HDB::Parser::unfilter_null_bytes($$ref{$Key}) ;
+      
       if    ( &HDB::Encode::Is_Packed_HASH($$ref{$Key}) ) { $$ref{$Key} = &HDB::Encode::UnPack_HASH($$ref{$Key}) ;}
       elsif ( &HDB::Encode::Is_Packed_ARRAY($$ref{$Key}) ) { $$ref{$Key} = &HDB::Encode::UnPack_ARRAY($$ref{$Key}) ;}
     }
@@ -1100,6 +1119,10 @@ Send a SQL query to the database. The return will be in the format of the argume
 =head1 tables
 
 Return an ARRAY with tables of the database.
+
+=head1 table_exists ( TABLE )
+
+Return TRUE if TABLE exists.
 
 =head1 tables_hash
 
