@@ -28,6 +28,7 @@ our @ISA = qw(HDB::MOD) ;
   REGEXP => 0 ,
   LOCK_TABLE => 0 ,
   SHOW => 0 ,
+  LIMIT => 1 ,
   TYPES => [qw(VARCHAR TEXT INTEGER FLOAT BOOLEAN CLOB BLOB TIMESTAMP NUMERIC)] ,
   ) ;
   

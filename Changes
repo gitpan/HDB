@@ -1,5 +1,12 @@
 Revision history for Perl extension HDB.
 
+1.04 2004-11-4
+     - Fixed and teste oracle support.
+
+
+1.03 2004-11-4
+     - Just some minor bugs.
+
 1.02 2004-10-30
      - Added filter/unfilter of null bytes when inserting data.
      - Added support for object references at HDB::Object.

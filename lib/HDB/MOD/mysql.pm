@@ -37,6 +37,7 @@ our @ISA = qw(HDB::MOD) ;
   REGEXP => 1 ,
   LOCK_TABLE => 1 ,
   SHOW => 1 ,
+  LIMIT => 1 ,
   TYPES => ['*'] ,
   TYPES_MASK => {
                 'BOOLEAN' => 'BOOL' ,
@@ -102,6 +103,7 @@ sub table_columns {
 ##############
 
 sub Type_FLOAT {
+  my $this = shift ;
   my ( $type , $args ) = @_ ;
   
   my $plus_minus ;

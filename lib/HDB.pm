@@ -19,7 +19,7 @@ use vars qw(@ISA $AUTOLOAD) ;
 no warnings ;
 
 our ($VERSION) ;
-$VERSION = '1.03' ;
+$VERSION = '1.04' ;
 
 my $REQUIRED ;
 

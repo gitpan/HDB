@@ -199,7 +199,9 @@ sub select {
     my $limit ;
     if ($args{limit} ne '') {
       my ($sz,$init) = ( $args{limit} =~ /(\d+)(?:\D+(\d+)|)/ );
-      $limit = $this->LIMIT($sz,$init) ;
+      my $into_where ;
+      ($limit , $into_where) = $this->LIMIT($sz,$init) ;
+      if ( $into_where ) { $where = "$where AND ($into_where)" ;}
     }
     
     $this->{sql} = "SELECT $cols FROM $args{table}" ;
@@ -237,23 +239,23 @@ sub insert {
   return $this->Error('Invalid table!') if !$table ;
   return $this->Error('Nothing to insert!') if !@up ;
   
+  my @names = $this->names($table) ;
+
+  my @cols ;
   if (ref($_[1]) eq 'HASH') {
-    my @names = $this->names($table) ;
-    
     my %up = @up ;
     @up = () ;
     
     foreach my $names_i ( @names ) {
       my $ins = undef ;
       
-      if    (defined $up{"$names_i"}) { $ins = $up{"$names_i"} ;}
-      elsif (defined $up{"\U$names_i\E"}) { $ins = $up{"\U$names_i\E"} ;}
-      elsif (defined $up{"\L$names_i"}) { $ins = $up{"\L$names_i"} ;}
-      elsif (defined $up{"\u\L$names_i\E"}) { $ins = $up{"\u\L$names_i\E"} ;}
-      
-      push(@up , $ins) ;
+      if    (defined $up{$names_i})     { push(@up , $up{$names_i}) ; push(@cols , $names_i) ;}
+      elsif (defined $up{uc($names_i)}) { push(@up , $up{uc($names_i)}) ; push(@cols , $names_i) ;}
+      elsif (defined $up{lc($names_i)}) { push(@up , $up{lc($names_i)}) ; push(@cols , $names_i) ;}
+      elsif (defined $up{"\u\L$names_i\E"}) { push(@up , $up{"\u\L$names_i\E"}) ; push(@cols , $names_i) ;}
     }
   }
+  else { @cols = @names ;}
   
   foreach my $up_i ( @up ) {
     if (ref($up_i) eq 'HASH') { $up_i = &HDB::Encode::Pack_HASH($up_i) ;}
@@ -265,7 +267,7 @@ sub insert {
 
   {
     my @ins_pnt = ('?') x @up ;
-    $this->{sql} = "INSERT INTO $table VALUES (". join(',',@ins_pnt) .")" ;
+    $this->{sql} = "INSERT INTO $table (". join(',',@cols) .") VALUES (". join(',',@ins_pnt) .")" ;
     eval { $this->{sth} = $this->dbh->prepare( $this->{sql} ) };
   }
   
@@ -281,6 +283,9 @@ sub insert {
   $this->_undef_sth ;
   
   return $this->Error("SQL error: $this->{sql}\nERROR MSG:\n$@") if $@ ;
+  
+  $this->ON_INSERT(\@cols,\@up) if $this->can('ON_INSERT') ;
+  
   return 1 ;
 }
 
@@ -416,6 +421,9 @@ sub create {
   eval { $this->dbh->do( $this->{sql} ) };
 
   return $this->Error("SQL error: $this->{sql}\nERROR MSG:\n$@") if $@ ;
+  
+  $this->ON_CREATE($table,\%cols,\@order) if $this->can('ON_CREATE') ;
+  
   return 1 ;
 }
 
@@ -453,7 +461,8 @@ sub names {
   elsif ( $this->{CACHE}{names}{$table} ) { return @{ $this->{CACHE}{names}{$table} } ;}
   
   if ( $this->{SQL}{SHOW} ) { $this->{sql} = "SHOW COLUMNS FROM $table" ;}
-  else { $this->{sql} = "SELECT * FROM $table LIMIT 1" ;}
+  elsif ( $this->{SQL}{LIMIT} ) { $this->{sql} = "SELECT * FROM $table LIMIT 1" ;}
+  else { $this->{sql} = "SELECT * FROM $table" ;}
   
   $this->_undef_sth ;
   eval{
@@ -550,6 +559,9 @@ sub drop {
   eval{ $this->dbh->do("DROP TABLE $table") };
 
   return $this->Error("DROP ERROR: table $table") if $@ ;
+  
+  $this->ON_DROP($table) if $this->can('ON_DROP') ;
+  
   return 1 ;
 }
 
@@ -740,8 +752,8 @@ sub get_type {
 
   ## TEXT
 
-  if ($type =~ /^(?:TEXT\s*)?(\d+|\(\s*\d+\s*\))$/s || $type eq 'TEXT') {
-    my $sz = $2 ; $sz =~ s/\D//gs ;
+  if ($type eq 'TEXT' || $type =~ /^(?:TEXT\s*)?(\d+|\(\s*\d+\s*\))$/s) {
+    my $sz = $1 ; $sz =~ s/\D//gs ;
     $sz = 65535 if $sz eq '' ;
     
     if ( !$this->Accept_Type('TEXT') ) { $type = $this->Type_TEXT($sz) ;}

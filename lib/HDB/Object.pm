@@ -2,7 +2,7 @@
 ## This file was generated automatically by Class::HPLOO/0.17
 ##
 ## Original file:    ./lib/HDB/Object.hploo
-## Generation date:  2004-10-31 20:01:05
+## Generation date:  2004-11-14 22:11:28
 ##
 ## ** Do not change this file, use the original HPLOO source! **
 #############################################################################
