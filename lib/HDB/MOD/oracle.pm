@@ -1,18 +1,16 @@
 #############################################################################
-## Name:        sqlite.pm
-## Purpose:     HDB::MOD::sqlite -> for DBD::SQLite
+## Name:        oracle.pm
+## Purpose:     HDB::MOD::oracle -> for DBD::Oracle
 ## Author:      Graciliano M. P.
 ## Modified by:
 ## Created:     14/01/2003
 ## RCS-ID:      
-## Copyright:   (c) 2002 Graciliano M. P.
+## Copyright:   (c) 2004 Graciliano M. P.
 ## Licence:     This program is free software; you can redistribute it and/or
 ##              modify it under the same terms as Perl itself
 #############################################################################
 
-# TESTED WITH DBD::SQLite 0.21 on Win32|Linux
-
-package HDB::MOD::sqlite ;
+package HDB::MOD::oracle ;
 use DBD::Oracle ;
 
 use strict qw(vars) ;

@@ -2,7 +2,7 @@
 ## This file was generated automatically by Class::HPLOO/0.17
 ##
 ## Original file:    ./lib/HDB/Object.hploo
-## Generation date:  2004-10-30 21:26:36
+## Generation date:  2004-10-31 20:01:05
 ##
 ## ** Do not change this file, use the original HPLOO source! **
 #############################################################################
@@ -782,14 +782,14 @@ sub DESTROY, or at least should call the super method:
 I<HDB::Object> will try to handle automatically attributes that make references
 to other objects or list of objects.
 
-When an atribute make a reference to a object that extends I<HDB::Object>,
+When an atribute make a reference to an object that extends I<HDB::Object>,
 only the ID to the object will be saved, making a reference to the ID
 of the object table.
 
 If an object doesn't extends I<HDB::Object> it will be serialized, using L<Storable>,
 and stored in the coloumn value.
 
-When an attribute have a list of objects a reference table is created automatically:
+When an attribute have a list of objects, a reference table is created automatically:
 
   attr( array Date::OBject dates )
 
