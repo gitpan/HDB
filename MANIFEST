@@ -1,0 +1,14 @@
+Changes
+MANIFEST
+Makefile.PL
+README
+lib/HDB.pm
+lib/HDB/CMDS.pm
+lib/HDB/CORE.pm
+lib/HDB/Encode.pm
+lib/HDB/MOD.pm
+lib/HDB/MOD/mysql.pm
+lib/HDB/MOD/oracle.pm
+lib/HDB/MOD/sqlite.pm
+lib/HDB/Parser.pm
+test.pl
